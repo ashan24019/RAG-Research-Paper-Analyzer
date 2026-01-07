@@ -112,8 +112,3 @@ tmp/
 *.bak
 *.swp
 *~.nib
-
-# Large files that shouldn't be committed
-*.tar.gz
-*.zip
-*.rar
