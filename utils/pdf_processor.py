@@ -38,15 +38,39 @@ class PDFProcessor:
         )
 
     def process_pdf(self, uploaded_file):
-        # Save the uploaded file to a temporary location
+        # Save the uploaded file to a temporary location and delegate
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
             temp_file.write(uploaded_file.getvalue())
             temp_file_path = temp_file.name
 
         try:
+            return self._process_file_path(temp_file_path)
+        finally:
+            try:
+                os.unlink(temp_file_path)
+            except OSError:
+                pass
+
+    def process_pdf_bytes(self, pdf_bytes: bytes):
+        """Process raw PDF bytes (useful for API uploads)."""
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
+            temp_file.write(pdf_bytes)
+            temp_file_path = temp_file.name
+
+        try:
+            return self._process_file_path(temp_file_path)
+        finally:
+            try:
+                os.unlink(temp_file_path)
+            except OSError:
+                pass
+
+    def _process_file_path(self, file_path: str):
+        """Internal: load a PDF from a filesystem path and return chunks."""
+        try:
             # If we have a LoaderClass (from langchain or langchain_community), use it
             if LoaderClass is not None:
-                loader = LoaderClass(temp_file_path)
+                loader = LoaderClass(file_path)
                 # Most LangChain loaders expose `load()` which returns a list of Documents
                 pages = loader.load()
             else:
@@ -67,7 +91,7 @@ class PDFProcessor:
                         self.page_content = text or ""
                         self.metadata = metadata or {}
 
-                reader = PdfReader(temp_file_path)
+                reader = PdfReader(file_path)
                 pages = []
                 for i, p in enumerate(reader.pages):
                     text = p.extract_text() or ""
@@ -79,9 +103,3 @@ class PDFProcessor:
             return chunks
         except Exception as e:
             raise RuntimeError(f"Failed to load or process PDF: {e}")
-        finally:
-            # Clean up the temporary file
-            try:
-                os.unlink(temp_file_path)
-            except OSError:
-                pass
