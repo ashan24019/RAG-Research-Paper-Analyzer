@@ -1,125 +1,78 @@
-from langchain_groq import ChatGroq
+import os
+from langchain_openai import ChatOpenAI
 
 
 class LLMHandler:
-    def __init__(self, api_key):
-        # Groq provides free, fast inference
-        self.llm = ChatGroq(
-            groq_api_key=api_key,
-            model_name="llama-3.3-70b-versatile",
-            temperature=0.2
-        )
 
-        # Custom prompt for research papers
+    def __init__(self, openai_api_key: str | None = None, model_name: str = "gpt-5-nano-2025-08-07", temperature: float = 0.0):
+        key = openai_api_key or os.getenv("OPENAI_API_KEY")
+        self.llm = ChatOpenAI(model=model_name, temperature=temperature, openai_api_key=key)
+
         self.prompt_template = (
             "Use the following extracted passages from a research paper to answer the question.\n\n"
             "Passages:\n{context}\n\nQuestion: {question}\n\nAnswer concisely and cite sources."
         )
 
-    def _extract_text_from_llm_response(self, resp):
-        # support common return shapes: plain str, object with .content, LLMResult with .generations, dict, list
-        if resp is None:
-            return ""
-        if isinstance(resp, str):
-            return resp
-        # langchain-style LLMResult with .generations -> list[list[Generation]] where Generation has .text
-        if hasattr(resp, "generations"):
-            try:
-                gens = resp.generations
-                if isinstance(gens, list) and len(gens) > 0 and len(gens[0]) > 0:
-                    gen0 = gens[0][0]
-                    if hasattr(gen0, "text"):
-                        return gen0.text or ""
-                    if hasattr(gen0, "generation_text"):
-                        return gen0.generation_text or ""
-            except Exception:
-                pass
-        # simple chat objects with .content
-        if hasattr(resp, "content"):
-            return getattr(resp, "content") or ""
-        # some SDKs return dicts
-        if isinstance(resp, dict):
-            for k in ("content", "text", "message", "response"):
-                if k in resp and isinstance(resp[k], str):
-                    return resp[k]
-        # list-like responses
-        if isinstance(resp, (list, tuple)) and len(resp) > 0:
-            return self._extract_text_from_llm_response(resp[0])
-        # fallback to string conversion
-        try:
-            return str(resp)
-        except Exception:
-            return ""
-
-    def _call_llm_with_prompt(self, prompt_text):
-        # Try common call methods in order
-        # 1) predict(prompt)
+    def _call_llm(self, prompt_text: str) -> str:
+        # Prefer predict() which returns a string for chat-style wrappers.
         if hasattr(self.llm, "predict"):
             try:
                 return self.llm.predict(prompt_text)
             except Exception:
                 pass
-        # 2) generate([prompt]) -> LLMResult
+
+        # Fallback to generate() and try to extract text
         if hasattr(self.llm, "generate"):
             try:
-                return self.llm.generate([prompt_text])
+                res = self.llm.generate([prompt_text])
+                if hasattr(res, "generations"):
+                    gens = res.generations
+                    if isinstance(gens, list) and len(gens) > 0 and len(gens[0]) > 0:
+                        gen0 = gens[0][0]
+                        text = getattr(gen0, "text", None) or getattr(gen0, "generation_text", None)
+                        if text:
+                            return text
+                return str(res)
             except Exception:
                 pass
-        # 3) run / invoke / call style methods
-        for name in ("run", "invoke", "call"):
-            if hasattr(self.llm, name):
-                try:
-                    return getattr(self.llm, name)(prompt_text)
-                except Exception:
-                    pass
-        # 4) attempt direct attribute 'complete' or 'complete_prompt'
-        for name in ("complete", "complete_prompt"):
-            if hasattr(self.llm, name):
-                try:
-                    return getattr(self.llm, name)(prompt_text)
-                except Exception:
-                    pass
-        # no supported method found
-        raise RuntimeError("LLM does not expose a supported call method (predict/generate/run/invoke).")
+
+        # Last resort: try calling the object
+        try:
+            return str(self.llm(prompt_text))
+        except Exception as e:
+            raise RuntimeError(f"LLM call failed: {e}")
 
     def create_qa_chain(self, vectorstore):
+        """Return a simple callable `qa(inputs)` where `inputs` is a dict with `query`.
 
-        # Fallback simple QA callable using the vectorstore directly
+        The callable returns a dict: {"result": str, "source_documents": list}
+        """
+
         def simple_qa(inputs):
-            # accept dict {"query": "..."} or plain string
             query = inputs.get("query") if isinstance(inputs, dict) else inputs
             if not query:
                 return {"result": "", "source_documents": []}
-            # retrieve top docs
+
+            # Retrieve documents
             try:
                 docs = vectorstore.similarity_search(query, k=4)
             except Exception:
-                # try as_retriever if similarity_search not present
                 try:
                     retr = vectorstore.as_retriever(search_kwargs={"k": 4})
                     docs = retr.get_relevant_documents(query)
                 except Exception:
                     docs = []
 
-            # build context from retrieved docs
-            context_parts = []
-            for d in docs:
-                if isinstance(d, dict):
-                    text = d.get("page_content", "") or d.get("content", "")
-                else:
-                    text = getattr(d, "page_content", None) or getattr(d, "content", None) or str(d)
-                context_parts.append(text)
-            context = "\n\n---\n\n".join(context_parts) if context_parts else ""
+            # Build context from retrieved docs
+            context = "\n\n---\n\n".join(
+                (getattr(d, "page_content", None) or getattr(d, "content", None) or str(d)) for d in docs
+            )
 
             prompt_text = self.prompt_template.format(context=context, question=query)
 
-            # Call the LLM using robust wrapper and normalize response
-            try:
-                llm_resp = self._call_llm_with_prompt(prompt_text)
-            except Exception as e:
-                return {"result": f"LLM call failed: {e}", "source_documents": docs}
+            llm_resp = self._call_llm(prompt_text)
 
-            answer_text = self._extract_text_from_llm_response(llm_resp)
+            answer_text = llm_resp if isinstance(llm_resp, str) else str(llm_resp)
 
             return {"result": answer_text, "source_documents": docs}
 
