@@ -1,14 +1,26 @@
-fastapi>=0.95.0
-uvicorn[standard]>=0.22.0
-python-multipart>=0.0.6
-python-dotenv>=1.0.0
-pydantic>=1.10.0
-pypdf>=3.0.0
-langchain-community>=0.0.20
-langchain-groq>=0.1.0
-langchain-text-splitters>=0.0.8
-sentence-transformers>=2.2.2
-chromadb>=0.3.32
-langchain>=0.0.300
-langchain-openai>=0.1.0
-openai>=0.27.0
+# FastAPI Web Framework
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+python-multipart==0.0.6
+
+# Environment & Configuration
+python-dotenv==1.0.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
+
+# LangChain - RAG Framework
+langchain==0.1.4
+langchain-openai==0.0.5
+langchain-community==0.0.16
+
+# Vector Database
+chromadb==0.4.22
+
+# PDF Processing
+pypdf==3.17.4
+
+# OpenAI
+openai==1.10.0
+
+# Additional utilities
+aiofiles==23.2.1

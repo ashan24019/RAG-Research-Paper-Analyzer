@@ -1,0 +1,40 @@
+backend/
+├── main.py                          # FastAPI app entry point
+├── requirements.txt                 # Dependencies
+├── .env                            # Environment variables (API keys)
+├── .env.example                    # Template for other developers
+├── .gitignore
+│
+├── app/
+│   ├── __init__.py
+│   │
+│   ├── api/                        # API layer
+│   │   ├── __init__.py
+│   │   └── routes/                 # Endpoints (Controllers)
+│   │       ├── __init__.py
+│   │       ├── document_routes.py  # PDF upload/list/delete
+│   │       └── chat_routes.py      # Question/answer
+│   │
+│   ├── services/                   # Business logic layer
+│   │   ├── __init__.py
+│   │   ├── pdf_service.py          # PDF processing logic
+│   │   ├── vector_service.py       # ChromaDB operations
+│   │   └── llm_service.py          # OpenAI API calls
+│   │
+│   ├── models/                     # Data models (DTOs)
+│   │   ├── __init__.py
+│   │   ├── requests.py             # Request schemas
+│   │   └── responses.py            # Response schemas
+│   │
+│   ├── core/                       # Core configurations
+│   │   ├── __init__.py
+│   │   ├── config.py               # Settings management
+│   │   └── dependencies.py         # Dependency injection
+│   │
+│   └── utils/                      # Utility functions
+│       ├── __init__.py
+│       └── file_utils.py           # File handling helpers
+│
+└── data/                           # Data storage (gitignored)
+    ├── uploads/                    # Temporary PDF storage
+    └── chroma_db/                  # ChromaDB persistence
