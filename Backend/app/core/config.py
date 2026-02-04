@@ -2,29 +2,36 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List
 import os
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 
 
 class Settings(BaseSettings):
     
     # OpenAI Configuration
-    openai_api_key: str = Field(..., alias="OPENAI_API_KEY")
+    openai_api_key: str = Field(..., env="OPENAI_API_KEY")
     
     # Application Settings
-    environment: str = Field(default="development", alias="ENVIRONMENT")
-    debug: bool = Field(default=True, alias="DEBUG")
+    environment: str = Field(default="development", env="ENVIRONMENT")
+    debug: bool = Field(default=True, env="DEBUG")
     
     # File Storage
-    upload_dir: str = Field(default="./data/uploads", alias="UPLOAD_DIR")
-    chroma_persist_dir: str = Field(default="./data/chroma_db", alias="CHROMA_PERSIST_DIR")
+    upload_dir: str = Field(default="./data/uploads", env="UPLOAD_DIR")
+    chroma_persist_dir: str = Field(default="./data/chroma_db", env="CHROMA_PERSIST_DIR")
     
     # Server Configuration
-    host: str = Field(default="0.0.0.0", alias="HOST")
-    port: int = Field(default=8000, alias="PORT")
+    host: str = Field(default="0.0.0.0", env="HOST")
+    port: int = Field(default=8000, env="PORT")
     
     # CORS Settings (stored raw from env as comma-separated string)
     cors_origins_raw: str = Field(
         default="http://localhost:5173,http://localhost:3000",
-        alias="CORS_ORIGINS"
+        env="CORS_ORIGINS"
     )
 
     @property
@@ -33,14 +40,14 @@ class Settings(BaseSettings):
         return [s.strip() for s in self.cors_origins_raw.split(",") if s.strip()]
     
     # OpenAI Models
-    embedding_model: str = Field(default="text-embedding-3-small", alias="EMBEDDING_MODEL")
-    chat_model: str = Field(default="gpt-4o-mini", alias="CHAT_MODEL")
-    temperature: float = Field(default=0.2, alias="TEMPERATURE")
+    embedding_model: str = Field(default="text-embedding-3-small", env="EMBEDDING_MODEL")
+    chat_model: str = Field(default="gpt-4o-mini", env="CHAT_MODEL")
+    temperature: float = Field(default=0.2, env="TEMPERATURE")
     
     # RAG Configuration
-    chunk_size: int = Field(default=1000, alias="CHUNK_SIZE")
-    chunk_overlap: int = Field(default=200, alias="CHUNK_OVERLAP")
-    max_chunks_retrieval: int = Field(default=4, alias="MAX_CHUNKS_RETRIEVAL")
+    chunk_size: int = Field(default=1000, env="CHUNK_SIZE")
+    chunk_overlap: int = Field(default=200, env="CHUNK_OVERLAP")
+    max_chunks_retrieval: int = Field(default=4, env="MAX_CHUNKS_RETRIEVAL")
     
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -79,18 +86,15 @@ settings = Settings()
 
 # Validation function
 def validate_settings():
-    if not settings.openai_api_key.startswith("sk-"):
-        raise ValueError("Invalid OpenAI API key format. Must start with 'sk-'")
-    
+    logger = logging.getLogger(__name__)
+
+    if not settings.openai_api_key or not settings.openai_api_key.strip():
+        raise ValueError("Missing OPENAI_API_KEY environment variable")
+
     if settings.chunk_size < settings.chunk_overlap:
         raise ValueError("chunk_size must be greater than chunk_overlap")
-    
-    print("✅ Configuration validated successfully")
-    print(f"📍 Environment: {settings.environment}")
-    print(f"🤖 Chat Model: {settings.chat_model}")
-    print(f"📊 Embedding Model: {settings.embedding_model}")
 
-
-# Run validation when module is imported
-if __name__ != "__main__":
-    validate_settings()
+    logger.info("Configuration validated successfully")
+    logger.info("Environment: %s", settings.environment)
+    logger.info("Chat Model: %s", settings.chat_model)
+    logger.info("Embedding Model: %s", settings.embedding_model)
