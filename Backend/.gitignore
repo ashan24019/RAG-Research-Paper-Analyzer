@@ -69,15 +69,6 @@ temp/
 *.xlsx
 *.zip
 
-# Model Files (if downloading locally)
-models/
-*.bin
-*.onnx
-*.pt
-*.pth
-*.h5
-*.pkl
-*.pickle
 
 # Logs
 logs/
