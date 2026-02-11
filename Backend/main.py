@@ -19,6 +19,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Register routers
+from app.api.routes.document_routes import router as documents_router
+app.include_router(documents_router)
+
 
 # Startup event
 @app.on_event("startup")

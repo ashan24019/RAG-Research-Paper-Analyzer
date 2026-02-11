@@ -3,9 +3,8 @@ from langchain_community.vectorstores import Chroma
 import chromadb
 from typing import List, Dict, Any, Optional
 import logging
-
-from sqlalchemy import text
 from app.core.config import settings
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -30,12 +29,12 @@ class VectorService:
 
     
     async def store_document(
-            self,
-            document_id: str,
-            chunks: List[Dict[str, Any]],
-            meatadata: Dict[str, Any]
+        self,
+        document_id: str,
+        chunks: List[Dict[str, Any]],
+        metadata: Dict[str, Any]
     ) -> Dict[str, Any]:
-        
+
         try:
             logger.info(f"Storing document {document_id} with {len(chunks)} chunks")
 
@@ -43,23 +42,25 @@ class VectorService:
             collection_name = f"doc_{document_id}"
             collection = self.chroma_client.get_or_create_collection(
                 name=collection_name,
-                metadata={"document_metadata": str(meatadata)}
+                metadata={"document_metadata": str(metadata)}
             )
 
             # Prepare data for ChromaDB
             texts = [chunk["text"] for chunk in chunks]
-            metadata = [chunk.get("metadata", {}) for chunk in chunks]
+            metadatas = [chunk.get("metadata", {}) for chunk in chunks]
             ids = [f"{document_id}_{i}" for i in range(len(chunks))]
 
-            # Generate embeddings(calls OpenAI API)
+            # Generate embeddings (calls OpenAI API) - run in thread to avoid blocking
             logger.info(f"Generating embeddings for document {document_id}")
-            embeddings_list = self.embeddings.embed_documents(texts)
+            embeddings_list = await asyncio.to_thread(self.embeddings.embed_documents, texts)
             logger.info(f"Generated {len(embeddings_list)} embeddings")
 
-            collection.add(
+            # Add to collection - run in thread if blocking
+            await asyncio.to_thread(
+                collection.add,
                 embeddings=embeddings_list,
-                documents=text,
-                metadatas=metadata,
+                documents=texts,
+                metadatas=metadatas,
                 ids=ids
             )
             logger.info(f"Successfully stored document {document_id}")
@@ -70,10 +71,10 @@ class VectorService:
                 "chunks_stored": len(chunks),
                 "collection_name": collection_name
             }
-        
-        except Exception as e:
-            logger.error(f"Error storing document {document_id}: {str(e)}")
-            raise Exception(f"Failed to store document {document_id}: {str(e)}")
+
+        except Exception:
+            logger.exception(f"Error storing document {document_id}")
+            raise
     
     async def search(
             self,
@@ -100,21 +101,19 @@ class VectorService:
             logger.info(f"Searching for: '{query[:50]}...' (max results: {n_results})")
 
             # Generate embedding for the query
-            query_embedding = self.embeddings.embed_query(query)
+            query_embedding = await asyncio.to_thread(self.embeddings.embed_query, query)
 
             if document_id:
                 collection_name = f"doc_{document_id}"
                 try:
                     collection = self.chroma_client.get_collection(collection_name)
-                    collection = [collection]
-                
+                    collections = [collection]
                 except Exception as e:
                     logger.error(f"Collection for document {document_id} not found: {str(e)}")
                     return []
-            
             else:
                 collections = self.chroma_client.list_collections()
-            
+
             all_results = []
 
             for collection in collections:
@@ -124,14 +123,14 @@ class VectorService:
                 )
 
                 # Process results
-                if results and results['documents'] and results['documents'][0]:
+                if results and results.get('documents') and results['documents'][0]:
                     for i in range(len(results['documents'][0])):
                         all_results.append({
                             "document": results['documents'][0][i],
                             "metadata": results['metadatas'][0][i],
                             "distance": results['distances'][0][i],
                             "chunk_id": results['ids'][0][i],
-                            "collection_name": collection.name
+                            "collection_name": getattr(collection, 'name', None)
                         })
             all_results.sort(key=lambda x: x['distance'])
             all_results = all_results[:n_results]
@@ -170,4 +169,4 @@ class VectorService:
             "collection_name": collection_name
         }
 
-VectorService = VectorService()
+vector_service = VectorService()

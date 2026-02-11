@@ -1,6 +1,7 @@
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from typing import List, Dict, Any
+import asyncio
 import tempfile
 import os
 import hashlib
@@ -21,7 +22,7 @@ class PDFProcessor:
         self.text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=self.chunk_size,
             chunk_overlap=self.chunk_overlap,
-            separators=["\n\n", "\n", " ", ""] # Try to split on natural boundaries
+            separators=["\n\n", "\n", " "]  # Try to split on natural boundaries
         )
 
         logger.info(f"PDFProcessor initialized with chunk_size={self.chunk_size} and chunk_overlap={self.chunk_overlap}")
@@ -34,7 +35,7 @@ class PDFProcessor:
 
 
     
-    def extact_metadata(self, pages: List, filename: str) -> Dict[str, Any]:
+    def extract_metadata(self, pages: List, filename: str) -> Dict[str, Any]:
 
         """
         Extract metadata from the document.
@@ -115,18 +116,20 @@ class PDFProcessor:
 
              # Load PDF and extract text
             loader = PyPDFLoader(temp_path)
-            pages = loader.load()
+            # loader.load() is blocking; run in a thread to avoid blocking the event loop
+            pages = await asyncio.to_thread(loader.load)
 
             if not pages:
                 raise ValueError("No text extracted from PDF.")
             
             logger.info(f"Loaded {len(pages)} pages from PDF")
 
-            chunks = self.text_splitter.split_documents(pages)
+            # splitting can be CPU-bound; run in a thread
+            chunks = await asyncio.to_thread(self.text_splitter.split_documents, pages)
             logger.info(f"Split into {len(chunks)} chunks")
 
             #Extract metadata
-            metadata = self.extact_metadata(pages, file.filename)
+            metadata = self.extract_metadata(pages, file.filename)
 
             processed_chunks = []
             for idx, chunk in enumerate(chunks):
@@ -164,5 +167,5 @@ class PDFProcessor:
             if temp_path and os.path.exists(temp_path):
                 os.unlink(temp_path)
                 logger.debug(f"Cleaned up temporary file: {temp_path}")
-
-PDFProcessor = PDFProcessor()
+ 
+pdf_processor = PDFProcessor()
