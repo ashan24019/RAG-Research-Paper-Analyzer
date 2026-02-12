@@ -2,7 +2,7 @@ import logging
 
 from fastapi import APIRouter, HTTPException
 
-from Backend.app.services import llm_service
+from app.services import llm_service
 from app.models.requests import ChatRequest
 from app.models.responses import ChatResponse
 

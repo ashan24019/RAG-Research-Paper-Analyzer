@@ -128,6 +128,13 @@ class PDFProcessor:
             chunks = await asyncio.to_thread(self.text_splitter.split_documents, pages)
             logger.info(f"Split into {len(chunks)} chunks")
 
+            # Fallback: if splitter returns no chunks, fall back to using each page as a chunk
+            if not chunks:
+                logger.warning(
+                    f"Text splitter produced 0 chunks for {file.filename} (ID: {document_id}), falling back to one chunk per page"
+                )
+                chunks = pages
+
             #Extract metadata
             metadata = self.extract_metadata(pages, file.filename)
 

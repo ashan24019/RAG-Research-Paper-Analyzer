@@ -3,7 +3,8 @@ from langchain_core.prompts import PromptTemplate
 from typing import List, Dict, Any, Optional
 import logging
 from app.core.config import settings
-from app.services.vector_service import VectorService
+from app.services.vector_service import vector_service
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -25,9 +26,13 @@ class LLMService:
     def format_context(self, chunks: List[Dict[str, Any]]) -> str:
         formatted_chunks = []
         for chunk in chunks:
-            text = chunk["text"]
+            # Support multiple possible result shapes from the vector search
+            # older code expected `text`; search returns `document`.
+            text = chunk.get("text") or chunk.get("document") or ""
             metadata = chunk.get("metadata", {})
-            source_info = f"(Source: {metadata.get('source', 'unknown')}, Page: {metadata.get('page', 'N/A')})"
+            # prefer page_number if present
+            page = metadata.get("page_number") or metadata.get("page") or "N/A"
+            source_info = f"(Source: {metadata.get('source', 'unknown')}, Page: {page})"
             formatted_chunks.append(f"{text}\n{source_info}\n")
         
         return "\n\n---\n\n".join(formatted_chunks)
@@ -68,7 +73,7 @@ class LLMService:
         Generate answer using LLM based on question and optional document context.
         """
         try:
-            chunks = await VectorService.search(
+            chunks = await vector_service.search(
                 query=question,
                 document_id=document_id,
                 n_results=settings.max_chunks_retrieval
@@ -90,25 +95,51 @@ class LLMService:
                 question=question
             )
 
-            # Step 5: Get answer from LLM
-            logger.info("Calling LLM for answer generation...")
-            response = self.llm.invoke(prompt)
-            answer = response.content
-
-            sources = [
-                {
-                    "text": chunk["text"],
-                    "page": chunk["metadata"].get("page_number", "Unknown"),
-                    "chunk_id": chunk.get("chunk_id", ""),
-                    "distance": chunk.get("distance", 0)
+            # Step 5: Get answer from LLM via OpenAI Chat Completions API
+            logger.info("Calling OpenAI Chat Completions for answer generation...")
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                payload = {
+                    "model": settings.chat_model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": float(settings.temperature)
                 }
-                for chunk in chunks
-            ]
+                headers = {"Authorization": f"Bearer {settings.openai_api_key}"}
+                resp = await client.post("https://api.openai.com/v1/chat/completions", json=payload, headers=headers)
+                resp.raise_for_status()
+                data = resp.json()
+                # Extract assistant text
+                answer = data["choices"][0]["message"]["content"]
+
+            sources = []
+            for chunk in chunks:
+                text = chunk.get("text") or chunk.get("document") or ""
+                metadata = chunk.get("metadata") or {}
+                # Ensure page is an int for the response model
+                page_val = metadata.get("page_number") or metadata.get("page")
+                try:
+                    page = int(page_val) if page_val is not None else 0
+                except Exception:
+                    page = 0
+
+                # Ensure distance is float
+                try:
+                    distance = float(chunk.get("distance", 0.0))
+                except Exception:
+                    distance = 0.0
+
+                sources.append({
+                    "text": text,
+                    "page": page,
+                    "chunk_id": chunk.get("chunk_id", ""),
+                    "distance": distance
+                })
                 
             return {
                 "answer": answer,
                 "sources": sources,
+                # Provide both keys to satisfy route logging and Pydantic model
                 "chunks_used": len(chunks),
+                "chunk_used": len(chunks),
                 "document_id": document_id
             }
         
@@ -133,3 +164,10 @@ class LLMService:
         )
 
 llm_service = LLMService()
+
+
+# Module-level convenience wrapper so callers that import the module
+# (e.g. `from app.services import llm_service`) can call `llm_service.generate_answer(...)`
+# as expected by the routes.
+async def generate_answer(question: str, document_id: Optional[str] = None, conversation_history: Optional[List[Dict[str, str]]] = None) -> Dict[str, Any]:
+    return await llm_service.generate_answer(question=question, document_id=document_id, conversation_history=conversation_history)

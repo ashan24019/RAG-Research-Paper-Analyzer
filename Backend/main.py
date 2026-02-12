@@ -6,6 +6,10 @@ from app.core.config import settings
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+
+    from app.core.config import validate_settings
+    validate_settings()
+
     print("\n" + "="*50)
     print("Research Paper RAG API Starting...")
     print("="*50)
@@ -20,7 +24,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Reasearch Paper RAG API",
+    title="Research Paper RAG API",
     description="AI-powered Research Paper Retrieval-Augmented Generation API",
     version="1.0.0",
     debug=settings.debug,
