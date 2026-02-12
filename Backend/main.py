@@ -1,13 +1,30 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
 from app.core.config import settings
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("\n" + "="*50)
+    print("Research Paper RAG API Starting...")
+    print("="*50)
+    print(f"Environment: {settings.environment}")
+    print(f"Debug Mode: {settings.debug}")
+    print(f"CORS Origins: {settings.cors_origins}")
+    print(f"Upload Directory: {settings.upload_dir}")
+    print(f"ChromaDB Directory: {settings.chroma_persist_dir}")
+    print("="*50 + "\n")
+    yield
+    print("\n Shutting down Research Paper RAG API...\n")
 
 
 app = FastAPI(
     title="Reasearch Paper RAG API",
     description="AI-powered Research Paper Retrieval-Augmented Generation API",
     version="1.0.0",
-    debug=settings.debug
+    debug=settings.debug,
+    lifespan=lifespan
 )
 
 # Configure CORS middleware
@@ -20,28 +37,10 @@ app.add_middleware(
 )
 
 # Register routers
-from app.api.routes.document_routes import router as documents_router
-app.include_router(documents_router)
+from app.api.routes import document_routes, chat_routes
 
-
-# Startup event
-@app.on_event("startup")
-async def startup_event():
-    print("\n" + "="*50)
-    print("Research Paper RAG API Starting...")
-    print("="*50)
-    print(f"Environment: {settings.environment}")
-    print(f"Debug Mode: {settings.debug}")
-    print(f"CORS Origins: {settings.cors_origins}")
-    print(f"Upload Directory: {settings.upload_dir}")
-    print(f"ChromaDB Directory: {settings.chroma_persist_dir}")
-    print("="*50 + "\n")
-
-
-# Shutdown event
-@app.on_event("shutdown")
-async def shutdown_event():
-    print("\n Shutting down Research Paper RAG API...\n")
+app.include_router(document_routes.router)
+app.include_router(chat_routes.router)
 
 
 # Root endpoint
