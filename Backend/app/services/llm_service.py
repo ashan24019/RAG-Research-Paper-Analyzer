@@ -131,3 +131,5 @@ class LLMService:
             document_id=document_id
             
         )
+
+llm_service = LLMService()
