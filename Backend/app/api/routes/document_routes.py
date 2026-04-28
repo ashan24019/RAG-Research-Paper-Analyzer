@@ -70,3 +70,19 @@ async def upload_document(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to process document",
         )
+
+
+@router.get("/")
+async def list_documents():
+    try:
+        documents = []
+        for doc_id in vector_service.list_document():
+            try:
+                stats = vector_service.get_collection_stats(doc_id)
+                documents.append(stats)
+            except Exception:
+                logger.warning("Skipping document stats for %s", doc_id)
+        return {"documents": documents, "total": len(documents)}
+    except Exception:
+        logger.exception("Error listing documents")
+        raise HTTPException(status_code=500, detail="Failed to list documents")
